@@ -105,13 +105,16 @@ module PufferPages
         end
 
         def render_template source, context = {}, additional = {}
-          self.class.trace_execution_scoped(["Custom/render_template/#{self.name.underscore}"]) do
+
+          result = nil
+
+          elapsed = Benchmark.realtime do
 
             template = source.respond_to?(:template) ? source.template : ::Liquid::Template.parse(source)
             context = merge_context(context, additional)
 
             if context.is_a?(::Liquid::Context)
-              instrument_render! context do
+              result = instrument_render! context do
                 template.send(render_method, context)
               end
             else
@@ -121,13 +124,15 @@ module PufferPages
                                         :tracker => tracker
                                       })
 
-              instrument_render! context do
+              result = instrument_render! context do
                 tracker.cleanup template.send(render_method,
                                               context[:drops].merge!(context[:environment]),
                                               registers: context[:registers])
               end
             end
-          end
+          end * 1000
+          logger.debug "Template debug - id: #{CmsEngine::DomainConfig.current.locale}_#{self.name} time: #{elapsed}"
+          result
         end
 
         def instrument_render! context, additional = {}, &block
